@@ -1,0 +1,388 @@
+#include <math.h>
+#include <nr_RSG.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <nrutil.h>
+
+//#define M_PI 3.14159265358979323846
+//#define M_PI_2 1.57079632679
+//#define RC 2.01
+#define RC 1.2
+#define L 6
+#define DC 0.4
+
+//double plgndr(int, int, double);
+//double arctan2(double, double);
+
+int DETorderParam(double x[][500], int N_Cstar, int N, int SUB_CRYST, double boxl, int output, int alpha, int *particleState)
+{
+  int i,j,k,m, beta;
+  double xij, yij, zij, rsq; 
+  int clust_size=0, index;
+  int Nb[ 1000 ]={0}, Np[ 200 ][ 200 ]={0};
+  double Sct[ 200 ][ 200 ]={0.0}, Sp[ 200 ][ 200 ]={0.0};
+  double qr[ 200 ][ 200 ]={0.0}, qi[ 200 ][ 200 ]={0.0};
+  double d[ 200 ][ 200 ]={0.0};
+  int xi[ 200 ]={0};
+  double mqi2=0.0, mqj2=0.0, qiqjc=0.0;
+  int dens[200] = {0}, cryst[200] = {0};
+
+  int NpMatrix[200][200]={0};
+  int bondsMatrix[200][200]={0};
+  int totalBonds = 0;
+
+  //double RC = 0.35*boxl;
+  double RCsq = RC*RC;
+  double boxInv = 1.0/boxl;
+  FILE *visualPtr;
+  FILE *bondPtr;
+  char bondName[100];
+  char visName[100];
+  int bondCount = 0;
+  double c, factRatio = 1.0;
+  double sign;
+
+  for(i=0;i<N;i++)
+    particleState[i] = 2;
+  
+  for(i=0;i<N;i++) {
+    k=0;
+    for(j=0;j<N;j++) {
+      if(j != i) {
+	xij = x[0][j]-x[0][i];
+	yij = x[1][j]-x[1][i];
+	zij = x[2][j]-x[2][i];
+	
+	//xij -= rint(xij*boxInv)*boxl;
+	//yij -= rint(yij*boxInv)*boxl;
+	//zij -= rint(zij*boxInv)*boxl;
+	
+	rsq = xij*xij + yij*yij + zij*zij;
+	/* If a particle is within RC of first particle i, increment Nb[i] and store the centre of mass distance vector R */
+	
+	if(rsq < RCsq) {
+	  //if(output==1)
+	  //printf("%f\n",sqrt(rsq));
+	  Nb[i]++;
+	  Np[i][k]=j;
+	  Sct[i][k]=(zij)/(sqrt(rsq));
+	  Sp[i][k]=atan2(yij,xij);
+    //Sp[i][k]=arctan2(yij,xij);
+	  k++;
+	}
+      }
+    }
+  }
+
+  //This is used for formatting in the VMD output and has no bearing on the order parameter
+  for(i=0;i<N;i++) { 
+    /*
+    if(output==1){
+      if(i==0){
+	printf("Dense Neighbours\n");
+	printf("----------------\n");
+      }
+      printf("Nb[%d]: %d\n",i,Nb[i]);  
+    }
+    */ 
+    if(Nb[i] >= 4){
+      dens[i] = 1;
+      particleState[i] = 3;
+    }
+  }
+
+  int densCount = 0;
+  for(i=0;i<N;i++){
+    if(dens[i] == 1)
+      densCount++;    
+  }
+
+  //return densCount;
+ 
+  double Lfactor = sqrt((2.0*L+1.0)/(4*M_PI));
+  for(i=0;i<N;i++){
+    //if(Nb[i]>=8-SUB_CRYST){
+    sign = 1.0;
+      for(m=0;m<=L;m++){
+	if(m>0){
+	  factRatio *= sqrt((L+m)*(L-m+1));
+	  sign *= -1.0;
+	}
+	for(j=0;j<Nb[i];j++){
+	  c = Lfactor/sqrt(factRatio);
+	  c *= plgndr(L,m,Sct[i][j]);
+	  qr[i][m+L] += c*cos(m*Sp[i][j])/(1.0*Nb[i]);
+	  qi[i][m+L] += c*sin(m*Sp[i][j])/(1.0*Nb[i]);
+	  if(m>0){
+	    qr[i][L-m] += sign*c*cos(m*Sp[i][j])/(1.0*Nb[i]);
+	    qi[i][L-m] -= sign*c*cos(m*Sp[i][j])/(1.0*Nb[i]);
+	  }
+	}
+      }
+      factRatio = 1.0;
+      //}
+      //for(m=-L;m<=L;m++)
+      //printf("q_6%d[%d]: %f + %fi\n", m, i, qr[i][L+m], qi[i][L+m]);
+  }
+
+  /* Calculate dl for each particle i */
+  for(i=0;i<N;i++) {
+    for(j=0;j<Nb[i];j++) {
+      for(m=-L;m<=L;m++) {
+	mqi2 += qr[i][m+L]*qr[i][m+L]+qi[i][m+L]*qi[i][m+L];
+	mqj2 += qr[Np[i][j]][m+L]*qr[Np[i][j]][m+L]+qi[Np[i][j]][m+L]*qi[Np[i][j]][m+L];
+ 	qiqjc += (qr[i][m+L]*qr[Np[i][j]][m+L]) + (qi[i][m+L]*qi[Np[i][j]][m+L]);
+      }     
+      d[i][j]=qiqjc/(sqrt(mqi2)*sqrt(mqj2));
+      //printf("d[%d][%d]: %f\n", i, Np[i][j], d[i][j]);
+      mqj2=0.0;
+      qiqjc=0.0;
+      mqi2=0.0;
+    }
+  }
+
+  /* Calculate the number of connections per particle */
+  for(i=0;i<N;i++) {
+    for(j=0;j<Nb[i];j++) {
+      if(d[i][j]-DC>0){
+	++xi[i];
+	bondsMatrix[i][Np[i][j]]=1;
+	++totalBonds;
+	//printf("d[%d][%d]: %f\n", i, Np[i][j], d[i][j]);
+      }
+    }
+  }
+  
+  if(N_Cstar==8) {
+    N_Cstar=8-SUB_CRYST;
+    for(i=0;i<N;i++) {
+      if(xi[i]>N_Cstar) {
+	if(N_Cstar == 8) {
+	  cryst[i] = 1;
+	  particleState[i] = 4;
+	  clust_size++;
+	}
+	else{
+	  if(xi[i]<8)
+	    N_Cstar = xi[i];
+	  else {
+	    N_Cstar = 8;
+	    cryst[i] = 1;
+	    particleState[i] = 4;
+	  }
+	  clust_size = 1;
+	}
+      }
+      else {
+	if(xi[i] == N_Cstar) {
+	  clust_size++;
+	  if(N_Cstar==8){
+	    cryst[i] = 1;
+	    particleState[i] = 4;
+	  }
+	}
+      }
+    }
+    if(SUB_CRYST == 0)
+      index = clust_size;
+    else{
+      if(clust_size > 0){
+	if(N_Cstar < 8){
+    for(i=0;i<N;i++){
+      if(xi[i] == N_Cstar)
+        particleState[i] = 1;
+    }
+	  index = N_Cstar+SUB_CRYST-7;
+  }
+	else
+	  index = SUB_CRYST + clust_size;
+      }
+      else
+	index = 0;
+    }
+  }
+  else {
+    /* Count number of solid-like particles (>=N_Cstar bonds) */
+    if(output==1)
+      printf("N_Cstar: %d\n",N_Cstar);
+    for(i=0;i<N;i++) {
+      if(xi[i]>=N_Cstar) {
+	cryst[i] = 1;
+  particleState[i] = 4;
+	clust_size++;
+      }
+    }
+    if(output==1)
+      printf("clust_size: %d\n",clust_size);
+    if(clust_size > 0)
+      index = clust_size;
+    else
+      index = 0;    
+  }
+  /*
+  for(i=0;i<N;i++){
+    //if(output==1)
+    //printf("%d\n",cryst[i]);
+    crystTrack[i] = cryst[i]; 
+    //    printf("crystTrack[%d]: %d\n",i,crystTrack[i]);  
+  }
+  */
+
+  if(output == 1) {    
+    //find the "centre of mass" of the system
+    int centPart=0;
+    for(i=0;i<N;i++) {
+      if(cryst[i]==1){
+	centPart = i;
+	break;
+      }
+    }
+    
+    //define the transformation to centre the box at the central particle
+    double xTrans = x[0][centPart];
+    double yTrans = x[1][centPart];
+    double zTrans = x[2][centPart];
+    double xPrint[10000]={0.0},yPrint[10000]={0.0},zPrint[10000]={0.0};
+    
+    for(i=0;i<N;i++){
+      //translate all particles
+      xPrint[i] = x[0][i] - xTrans;
+      yPrint[i] = x[1][i] - yTrans;
+      zPrint[i] = x[2][i] - zTrans;
+    
+      //periodic boundaries
+      xPrint[i]-=rint(xPrint[i]/boxl)*boxl;
+      yPrint[i]-=rint(yPrint[i]/boxl)*boxl;
+      zPrint[i]-=rint(zPrint[i]/boxl)*boxl;
+    }
+
+    beta = sprintf(visName,"VMD/coordinates%d.pdb",alpha); 
+    visualPtr = fopen(visName,"w");
+    for(i=0;i<N;i++) {
+      if(dens[i] == 1){
+	if(cryst[i] == 1)
+	  fprintf(visualPtr,"ATOM      1  C   ALA     1    %8.2f%8.2f%8.2f0.00  1.00      MAIN\n",xPrint[i],yPrint[i],zPrint[i]);
+	else
+	  fprintf(visualPtr,"ATOM      1  C   ARG     1    %8.2f%8.2f%8.3f0.00  1.00      MAIN\n",xPrint[i],yPrint[i],zPrint[i]);
+      }
+      else 
+	fprintf(visualPtr,"ATOM      1  C   ASN     1    %8.2f%8.2f%8.2f0.00  1.00      MAIN\n",xPrint[i],yPrint[i],zPrint[i]); 
+    }
+    fprintf(visualPtr,"END");
+    fclose(visualPtr);
+
+    beta = sprintf(bondName,"VMD/bonds%d.psf",alpha);
+    bondPtr = fopen(bondName,"w");
+    fprintf(bondPtr,"PSF\n");
+    fprintf(bondPtr,"\n");
+    fprintf(bondPtr,"      11 !NTITLE\n");
+    fprintf(bondPtr,"\n");
+    fprintf(bondPtr,"      %d !NATOM\n",N);
+    for(i=1;i<=N;i++){
+      if(dens[i-1]==1){
+	if(cryst[i-1]==1){
+	  if(i<10)
+	    fprintf(bondPtr,"       %d MAIN 1    ALA  C    C   0.000000       15.0350           0\n",i);
+	  else
+	    fprintf(bondPtr,"      %d MAIN 1    ALA  C    C      0.000000       15.0350           0\n",i);
+	}
+	else{
+	  if(i<10)
+	    fprintf(bondPtr,"       %d MAIN 1    ARG  C    C   0.000000       15.0350           0\n",i);
+	  else
+	    fprintf(bondPtr,"      %d MAIN 1    ARG  C    C      0.000000       15.0350           0\n",i);
+	}
+      }
+      else{
+	if(i<10)
+	    fprintf(bondPtr,"       %d MAIN 1    ASN  C    C   0.000000       15.0350           0\n",i);
+	else
+	  fprintf(bondPtr,"      %d MAIN 1    ASN  C    C      0.000000       15.0350           0\n",i);
+	
+      }
+    }
+    fprintf(bondPtr,"\n\n");
+    if(totalBonds<10)
+      fprintf(bondPtr,"       %d !NBOND: bonds\n", totalBonds);
+    else
+      fprintf(bondPtr,"      %d !NBOND: bonds\n", totalBonds);
+    for(i=0;i<N;i++){
+      for(j=0;j<N;j++){
+	if(bondsMatrix[i][j] == 1){
+	  if(i+1<10)
+	    fprintf(bondPtr,"       %d",i+1);
+	  else
+	    fprintf(bondPtr,"      %d",i+1);
+	  if(j+1<10)
+	    fprintf(bondPtr,"       %d",j+1);
+	  else
+	    fprintf(bondPtr,"      %d",j+1);
+	  bondCount++;
+	  if(bondCount == 4){
+	    fprintf(bondPtr,"\n");
+	    bondCount = 0;
+	  }
+	}
+      }
+    }
+    fprintf(bondPtr,"\n");
+    fclose(bondPtr);
+    
+  }
+    
+  return index;
+}
+/*
+double plgndr(int l, int m, double x)
+{
+  //void nrerror(char error_text[]);
+  double fact,pll,pmm,pmmp1,somx2;
+  int i,ll;
+
+  //if (m < 0 || m > l || fabs(x) > 1.0)
+  //  nrerror("Bad arguments in routine plgndr");
+  pmm=1.0;
+  if (m > 0) {
+    somx2=sqrt((1.0-x)*(1.0+x));
+    fact=1.0;
+    for (i=1;i<=m;i++) {
+      pmm *= -fact*somx2;
+      fact += 2.0;
+    }
+  }
+  if (l == m)
+    return pmm;
+  else {
+    pmmp1=x*(2*m+1)*pmm;
+    if (l == (m+1))
+      return pmmp1;
+    else {
+      for (ll=m+2;ll<=l;ll++) {
+        pll=(x*(2*ll-1)*pmmp1-(ll+m-1)*pmm)/(ll-m);
+        pmm=pmmp1;
+        pmmp1=pll;
+      }
+      return pll;
+    }
+  }
+}
+
+double arctan2(double y, double x)
+{
+  double absx, absy, val;
+
+  absy = y < 0 ? -y : y;
+  absx = x < 0 ? -x : x;
+  if(absy - absx == absy) //x negligible compared to y
+    return y < 0 ? -M_PI_2 : M_PI_2;
+  if(absx - absy == absx) // y negligible compared to x
+    val = 0.0;
+  else
+    val = atan(y/x);
+  if(x > 0) //first or fourth quadrant; already correct
+    return val;
+  if(y < 0) //third quadrant
+    return val - M_PI;
+  return val + M_PI;
+}
+*/

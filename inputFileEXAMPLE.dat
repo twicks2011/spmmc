@@ -1,0 +1,37 @@
+128	: N
+1.05	: LAMBDA
+4  	: TEMP_INTEREST 	
+12	: NUM_TEMPS
+EXAMPLES/tempRangeEXAMPLE.dat	: TEMPS_FILE (File containing temperature profile)
+1	: fileInput (0=Off (planar zig-zag), 1=On)
+EXAMPLES/configsEXAMPLE.dat	: CONFIGS_FILE (File containing initial configs)
+EXAMPLES/moveSizesEXAMPLE/	: MSIZE_DIR (Directory containing initial move sizes)
+1.0      : PHI_MAX
+1.0      : ALPHA (LJ)
+0.0	       : BETA (Torsion)
+0.0 	: GAMMA (Bonds)
+0.0001	: sigma (stretch coeff.)
+0	: stretchStart
+127	: stretchFinish
+0      : Nmin
+250      : Nmax
+0.002 	: kappaLHS
+0.02	: kappaRHS
+0	 : UPDATE (0=Off, 1=On) (Update biasing function? (feedback))
+0.3     : tolerance
+1.0e+04    : PRINT_INTERVAL (print output files)
+1.0e+04	    : PHI_UPDATE_INTERVAL
+10.0     : UPDATE_INTERVAL (number of swap intervals) (update biasing functon)
+5e+04      	    : SWAP_INTERVAL (attempt chain swap)
+50	    : NUM_SWAPS
+1.0e+08	    : NUM_SWAP_INTERVALS
+5.0e+07	    : RESET_INTERVAL
+0.1    : SMALL_ANGLE_MOVES
+0.1    : REPTATION_MOVES
+0.6     : CRANK_MOVES
+0.1		: END_ROT_MOVES
+0.1		: END_BRIDGE_MOVES
+outputFiles/EXAMPLE/       : OUTPUT_DIR (Output Directory)
+EXAMPLES/weightFileEXAMPLE.dat       : weightFile
+VMD/EXAMPLE/			   : VMDdir
+EXAMPLES/initCoordsEXAMPLE.dat		: initCoords (enter "zig-zag" for initial planar zig-zag) NOTE: This is overridden by CONFIGS_FILE if fileInput=1.
